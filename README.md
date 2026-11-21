@@ -57,7 +57,12 @@ pdflatex proof_outline.tex
 
 **Generated LaTeX Output Preview:**
 
-![Generated LaTeX Proof Outline Preview](docs/blueprint_preview.jpg)
+<table>
+  <tr>
+    <td align="center"><b>Title & Architecture Outline (Page 1)</b><br><img src="docs/blueprint_preview.jpg" width="420"></td>
+    <td align="center"><b>Extracted Formulas & Proof Sketches (Page 3)</b><br><img src="docs/blueprint_proofs.jpg" width="420"></td>
+  </tr>
+</table>
 
 ---
 
