@@ -201,7 +201,7 @@ pub fn run_graph(
     ExitCode::SUCCESS
 }
 
-pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool) -> ExitCode {
+pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool, filter: Option<String>, export_flagged: Option<PathBuf>) -> ExitCode {
     let (total_files, nodes) = build_dag(src_dir);
 
     if !nodes.contains_key(entry) {
@@ -221,6 +221,7 @@ pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool) -> ExitCode {
     let mut tot_true_stubs = 0usize;
     let mut tot_heartbeats = 0usize;
     let mut tot_clones = 0usize;
+    let mut flagged_paths: Vec<String> = Vec::new();
 
     let mut issues_table = Table::new();
     issues_table.set_header(vec!["Module", "sorry/admit", "Axioms", ": True Stubs", "Heartbeat Hack"]);
@@ -240,12 +241,21 @@ pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool) -> ExitCode {
             tot_heartbeats += 1;
         }
 
-        let has_issue = node.sorry_count > 0
-            || (!allow_axioms && node.axioms_count > 0)
-            || node.trivial_true_count > 0
-            || node.has_heartbeat_hack;
+        let has_issue = match filter.as_deref() {
+            Some("sorry") => node.sorry_count > 0,
+            Some("axioms") => node.axioms_count > 0,
+            Some("true") => node.trivial_true_count > 0,
+            Some("heartbeat") => node.has_heartbeat_hack,
+            _ => {
+                node.sorry_count > 0
+                    || (!allow_axioms && node.axioms_count > 0)
+                    || node.trivial_true_count > 0
+                    || node.has_heartbeat_hack
+            }
+        };
 
         if has_issue {
+            flagged_paths.push(node.path.to_string_lossy().to_string());
             issues_table.add_row(vec![
                 Cell::new(&node.name),
                 Cell::new(node.sorry_count).fg(if node.sorry_count > 0 { Color::Red } else { Color::Green }),
@@ -280,8 +290,16 @@ pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool) -> ExitCode {
         || tot_true_stubs > 0
         || tot_heartbeats > 0;
 
+    if let Some(ref out_p) = export_flagged {
+        if let Err(e) = fs::write(out_p, flagged_paths.join("\n")) {
+            eprintln!("Failed to write flagged list: {e}");
+        } else {
+            println!("Exported {} flagged module paths to: {:?}", flagged_paths.len(), out_p);
+        }
+    }
+
     if failed {
-        println!("\nFlagged Modules:\n{issues_table}");
+        println!("\nFlagged Modules ({} shown):\n{issues_table}", flagged_paths.len());
         eprintln!("CHECK FAILED: Unproven gaps, custom axioms, or trivial `: True` stubs detected.");
         ExitCode::from(1)
     } else {

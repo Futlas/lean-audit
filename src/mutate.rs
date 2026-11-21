@@ -193,12 +193,22 @@ pub fn run_mutate(
         None => Runner::Direct(bin, args),
     };
 
-    let files: Vec<PathBuf> = WalkDir::new(path)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "lean"))
-        .map(|e| e.path().to_path_buf())
-        .collect();
+    let files: Vec<PathBuf> = if path.is_file() && path.extension().is_some_and(|e| e == "txt") {
+        fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(PathBuf::from)
+            .collect()
+    } else {
+        WalkDir::new(path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "lean"))
+            .map(|e| e.path().to_path_buf())
+            .collect()
+    };
 
     let skipped_orig = AtomicUsize::new(0);
 
@@ -257,7 +267,28 @@ pub fn run_mutate(
                 );
                 let out_false = out_dir.join(format!("{safe_name}_{idx}_false.lean"));
                 if fs::write(&out_false, false_code).is_ok() {
+        
+            let stub_re = Regex::new(r"(∧\s*True\b|/\\\s*True\b|:\s*True\b)").unwrap();
+            let file_stem = file.file_stem().unwrap_or_default().to_string_lossy().replace('.', "_");
+            for (s_idx, m) in stub_re.find_iter(&content).enumerate() {
+                let mut mutated = content.clone();
+                let replacement = m.as_str().replace("True", "False");
+                mutated.replace_range(m.range(), &replacement);
+                let line_num = content[..m.start()].matches('\n').count() + 1;
+                let out_stub = out_dir.join(format!("{file_stem}_stub_{s_idx}_{line_num}.lean"));
+                if fs::write(&out_stub, mutated).is_ok() {
                     local_mutants.push(Mutant {
+                        file_path: out_stub,
+                        theorem_name: format!("line_{line_num}"),
+                        category: "STUB_INJECTION".into(),
+                        kind: "True -> False".into(),
+                        origin: format!("{}:line_{line_num}", file.display()),
+                        survived: false,
+                    });
+                }
+            }
+
+            local_mutants.push(Mutant {
                         file_path: out_false,
                         theorem_name: name.to_string(),
                         category: "VACUOUS_TRUTH".into(),
@@ -357,11 +388,13 @@ pub fn run_mutate(
     }
 
     let mut cnt_vac = (0usize, 0usize);
+    let mut cnt_stub = (0usize, 0usize);
     let mut cnt_hyp = (0usize, 0usize);
     let mut cnt_bnd = (0usize, 0usize);
 
     for m in &mutants {
         let pair = match m.category.as_str() {
+            "STUB_INJECTION" => &mut cnt_stub,
             "VACUOUS_TRUTH" => &mut cnt_vac,
             "UNUSED_HYP" => &mut cnt_hyp,
             _ => &mut cnt_bnd,
@@ -374,6 +407,11 @@ pub fn run_mutate(
 
     let mut summary = Table::new();
     summary.set_header(vec!["Mutation Category", "Generated", "Survived (Suspicious)"]);
+    summary.add_row(vec![
+        Cell::new("STUB_INJECTION (True -> False)"),
+        Cell::new(cnt_stub.0),
+        Cell::new(cnt_stub.1).fg(if cnt_stub.1 > 0 { Color::Red } else { Color::Green }),
+    ]);
     summary.add_row(vec![
         Cell::new("VACUOUS_TRUTH (Target -> False)"),
         Cell::new(cnt_vac.0),

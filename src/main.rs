@@ -42,6 +42,12 @@ enum Commands {
         entry: String,
         #[arg(long)]
         allow_axioms: bool,
+        /// Filter flagged modules by anomaly type: sorry, axioms, true, heartbeat
+        #[arg(short, long)]
+        filter: Option<String>,
+        /// Export paths of flagged modules to a text file for targeted `laud mutate`
+        #[arg(short, long)]
+        export_flagged: Option<PathBuf>,
     },
     /// Generate AGENTS.md (and optional CLAUDE.md) guardrails for AI coding agents
     InitAgent {
@@ -133,8 +139,8 @@ fn main() -> ExitCode {
         Commands::Graph { src, entry, export_unique, tree, max_depth } => {
             graph::run_graph(&src, &entry, export_unique, tree, max_depth)
         }
-        Commands::Check { src, entry, allow_axioms } => {
-            graph::run_check(&src, &entry, allow_axioms)
+        Commands::Check { src, entry, allow_axioms, filter, export_flagged } => {
+            graph::run_check(&src, &entry, allow_axioms, filter, export_flagged)
         }
         Commands::InitAgent { dir, claude } => write_agent_instructions(&dir, claude),
         Commands::Mutate {
