@@ -144,3 +144,147 @@ pub fn find_lake_root(start: &Path) -> Option<PathBuf> {
     }
     None
 }
+
+use std::collections::{HashSet, VecDeque};
+
+pub struct ProofDag {
+    pub total_files_on_disk: usize,
+    pub nodes: HashMap<String, ModuleNode>,
+    pub layers: Vec<Vec<String>>,
+    #[allow(dead_code)]
+    pub clones_skipped: usize,
+}
+
+impl ProofDag {
+    pub fn build(src_dir: &Path, entry: &str, max_depth: Option<usize>) -> Result<Self, String> {
+        let (total_files_on_disk, nodes) = build_dag(src_dir);
+        if !nodes.contains_key(entry) {
+            return Err(format!("Entry module `{entry}` not found in {:?}", src_dir));
+        }
+
+        let mut visited = HashSet::new();
+        let mut seen_hashes = HashSet::new();
+        let mut queue = VecDeque::new();
+        let mut layers: Vec<Vec<String>> = Vec::new();
+        let mut clones_skipped = 0usize;
+
+        visited.insert(entry.to_string());
+        queue.push_back((entry.to_string(), 0usize));
+
+        while let Some((curr, depth)) = queue.pop_front() {
+            if let Some(limit) = max_depth {
+                if depth > limit {
+                    continue;
+                }
+            }
+            let Some(node) = nodes.get(&curr) else { continue };
+
+            if !seen_hashes.insert(node.content_hash) {
+                clones_skipped += 1;
+                continue;
+            }
+
+            if layers.len() <= depth {
+                layers.resize_with(depth + 1, Vec::new);
+            }
+            layers[depth].push(curr.clone());
+
+            for imp in &node.imports {
+                if nodes.contains_key(imp) && visited.insert(imp.clone()) {
+                    queue.push_back((imp.clone(), depth + 1));
+                }
+            }
+        }
+
+        Ok(Self {
+            total_files_on_disk,
+            nodes,
+            layers,
+            clones_skipped,
+        })
+    }
+}
+
+impl ProofDag {
+    /// Строит глобальный пул деклараций по всем модулям этажей `0..=max_layer`
+    /// и запускает Fixpoint BFS по графу вызовов начиная с `Depth 0` (и `extra_roots`).
+    pub fn collect_used_symbols(&self, max_layer: usize, extra_roots: &[String]) -> HashSet<String> {
+        let decl_re = Regex::new(
+            r"(?m)^(?:private\s+|protected\s+|noncomputable\s+|scoped\s+|@\[[^\]]+\]\s*)*(theorem|lemma|def|structure|inductive|class|instance|abbrev)\s+([A-Za-z0-9_.']+)",
+        )
+        .unwrap();
+        let ident_re = Regex::new(r"\b[A-Za-z_][A-Za-z0-9_']*\b").unwrap();
+
+        let mut symbol_bodies: HashMap<String, Vec<String>> = HashMap::new();
+        let mut queue: VecDeque<String> = VecDeque::new();
+        let mut used: HashSet<String> = HashSet::new();
+
+        for r in extra_roots {
+            if used.insert(r.clone()) {
+                queue.push_back(r.clone());
+            }
+        }
+
+        // 1. Индексируем все декларации со всех этажей 0..=max_layer в единый пул
+        for depth in 0..=max_layer {
+            let Some(layer) = self.layers.get(depth) else { continue };
+            for mod_name in layer {
+                let Some(node) = self.nodes.get(mod_name) else { continue };
+                let Ok(raw) = fs::read_to_string(&node.path) else { continue };
+                let clean = strip_lean_comments(&raw);
+                let matches: Vec<_> = decl_re.find_iter(&clean).collect();
+
+                for i in 0..matches.len() {
+                    let st = matches[i].start();
+                    let en = if i + 1 < matches.len() {
+                        matches[i + 1].start()
+                    } else {
+                        clean.len()
+                    };
+                    let chunk = &clean[st..en];
+                    let short_name = decl_re
+                        .captures(chunk)
+                        .and_then(|c| c.get(2))
+                        .map(|m| m.as_str().rsplit('.').next().unwrap_or(m.as_str()).to_string())
+                        .unwrap_or_default();
+
+                    if short_name.is_empty() {
+                        continue;
+                    }
+
+                    // Всё, что объявлено на 0-м уровне (Main.lean), является корнем поиска
+                    if depth == 0 && used.insert(short_name.clone()) {
+                        queue.push_back(short_name.clone());
+                    }
+
+                    symbol_bodies
+                        .entry(short_name)
+                        .or_default()
+                        .push(chunk.to_string());
+                }
+            }
+        }
+
+        // 2. Fixpoint BFS по графу символов (работает сквозь любые пустые файлы-мосты!)
+        while let Some(sym) = queue.pop_front() {
+            if let Some(chunks) = symbol_bodies.get(&sym) {
+                for chunk in chunks {
+                    for m in ident_re.find_iter(chunk) {
+                        let tok = m.as_str();
+                        let is_generic = matches!(
+                            tok,
+                            "Refl" | "Symm" | "Trans" | "Congr" | "Card" | "Sum" | "All"
+
+                                | "Unique" | "One" | "Mul" | "Inv" | "Add" | "Zero" | "Mem"
+                        );
+                        if tok.len() >= 4 && !is_generic && symbol_bodies.contains_key(tok) && used.insert(tok.to_string()) {
+                            queue.push_back(tok.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        used
+    }
+}

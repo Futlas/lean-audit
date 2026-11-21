@@ -2,6 +2,7 @@ mod blueprint;
 mod core;
 mod graph;
 mod mutate;
+mod slice;
 
 use clap::{Parser, Subcommand};
 use std::fs;
@@ -78,6 +79,26 @@ enum Commands {
         #[arg(long, default_value = "lean")]
         lean_cmd: String,
     },
+    /// Slice top N levels of the proof pyramid for fast partial compilation & `#print axioms`
+    Slice {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        #[arg(long, default_value_t = 4)]
+        max_depth: usize,
+        #[arg(short, long, default_value = "/tmp/lean_slice")]
+        out: PathBuf,
+        /// Theorem names to inspect via `#print axioms` in AuditVerify.lean
+        #[arg(long)]
+        axioms: Vec<String>,
+        /// Prune unused declarations inside modules via top-down symbol reachability
+        #[arg(long)]
+        tree_shake: bool,
+        /// Immediately run `lake env lean` / `lean` on the generated slice
+        #[arg(short, long)]
+        run: bool,
+    },
     /// Export an arXiv-style LaTeX (.tex) and optional Markdown proof outline
     Blueprint {
         #[arg(default_value = "src")]
@@ -94,6 +115,9 @@ enum Commands {
         tex: PathBuf,
         #[arg(long)]
         md: Option<PathBuf>,
+        /// Keep only declarations transitively referenced from the entry module
+        #[arg(long)]
+        tree_shake: bool,
     },
 }
 
@@ -148,10 +172,13 @@ fn main() -> ExitCode {
         } => mutate::run_mutate(
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
+        Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, run } => {
+            slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, run)
+        }
         Commands::Blueprint {
-            src, entry, max_depth, only_theorems, include_props, tex, md,
+            src, entry, max_depth, only_theorems, include_props, tex, md, tree_shake,
         } => blueprint::run_blueprint(
-            &src, &entry, max_depth, only_theorems, include_props, tex, md,
+            &src, &entry, max_depth, only_theorems, include_props, tex, md, tree_shake,
         ),
     }
 }

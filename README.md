@@ -95,6 +95,18 @@ laud mutate src --lake --vacuous-only --limit 100 --run
 laud mutate src --strip-imports --verify-orig --run
 ```
 
+### 4. Top-Down Partial Compilation & Tree-Shaking (`laud slice` & `--tree-shake`)
+
+Slice out only the top `N` levels of a massive proof DAG, auto-generate `sorry` boundary stubs at level `N + 1`, prune unused declarations via fixpoint symbol-graph reachability (`--tree-shake`, also supported in `laud blueprint`), and generate an `AuditVerify.lean` entrypoint for fast kernel type-checking:
+
+```bash
+# Extract top 4 levels + pruned boundary stubs
+laud slice src --entry Main --max-depth 4 --tree-shake --axioms riemannHypothesis --out /tmp/lean_slice
+
+# Generate a clean arXiv-style LaTeX outline containing only transitively used theorems
+laud blueprint src --entry Main --max-depth 5 --tree-shake --tex proof_outline.tex
+```
+
 ## License
 
 MIT License — Copyright (c) 2026 Alexander Limanskii.

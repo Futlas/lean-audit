@@ -1,4 +1,4 @@
-use crate::core::build_dag;
+use crate::core::{build_dag, ProofDag};
 use regex::Regex;
 use std::collections::{HashSet, VecDeque};
 use std::fs;
@@ -249,7 +249,7 @@ fn tex_escape(s: &str) -> String {
         .replace('$', r"\$").replace('#', r"\#").replace('{', r"\{").replace('}', r"\}")
 }
 
-fn parse_file(content: &str, only_theorems: bool, include_props: bool) -> Vec<DeclItem> {
+fn parse_file(content: &str, only_theorems: bool, include_props: bool, used_symbols: Option<&HashSet<String>>) -> Vec<DeclItem> {
     let re = Regex::new(
         r"^(?:private\s+|protected\s+|noncomputable\s+)*(theorem|lemma|structure|def|inductive)\s+([A-Za-z0-9_.']+)",
     ).unwrap();
@@ -261,6 +261,10 @@ fn parse_file(content: &str, only_theorems: bool, include_props: bool) -> Vec<De
         let kind = cap.get(1).unwrap().as_str().to_string();
         if only_theorems && kind != "theorem" && kind != "lemma" { continue; }
         let name = cap.get(2).unwrap().as_str();
+        if let Some(used) = used_symbols {
+            let short_name = name.rsplit('.').next().unwrap_or(name);
+            if !used.contains(short_name) { continue; }
+        }
 
         let mut doc = None;
         let mut i = idx;
@@ -333,7 +337,19 @@ pub fn run_blueprint(
     include_props: bool,
     tex_path: PathBuf,
     md_out: Option<PathBuf>,
+    tree_shake: bool,
 ) -> ExitCode {
+    let used_symbols = if tree_shake {
+        if let Ok(dag) = ProofDag::build(src_dir, entry, None) {
+            dag.collect_used_symbols(dag.layers.len(), &[])
+        } else {
+            HashSet::new()
+        }
+    } else {
+        HashSet::new()
+    };
+    let sym_filter = if tree_shake { Some(&used_symbols) } else { None };
+
     let (_, nodes) = build_dag(src_dir);
     if !nodes.contains_key(entry) {
         eprintln!("Error: entry module `{entry}` not found in {:?}", src_dir);
@@ -356,7 +372,7 @@ pub fn run_blueprint(
         total_modules += 1;
 
         let content = fs::read_to_string(&node.path).unwrap_or_default();
-        let items = parse_file(&content, only_theorems, include_props);
+        let items = parse_file(&content, only_theorems, include_props, sym_filter);
         if !items.is_empty() {
             by_depth[depth].push(Chapter { name: humanize(&node.name), items });
         }
