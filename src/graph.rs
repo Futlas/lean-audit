@@ -131,7 +131,7 @@ pub fn run_graph(
             let mod_name = rel.with_extension("").to_string_lossy().replace('/', ".");
             let imports = imp_re
                 .captures_iter(&content)
-                .map(|c| c.to_string())
+                .map(|c| c[1].to_string())
                 .collect();
 
             let content_hash = normalize_and_hash(&content);
