@@ -19,6 +19,20 @@ cargo install lean-audit
 
 ## Features & Real-World Benchmarks
 
+### 0. AI-Agent Guardrails & Strict CI Gate (`laud check` & `laud init-agent`)
+
+Autonomous coding agents (Google Jules, Claude Code, Cursor, Codex) often satisfy `lake build` by leaving hidden `sorry`s, inventing custom `axiom`s, or weakening theorem goals to `: True` / `∧ True`. `laud check` traverses the reachable import DAG (stripping nested block comments `/- ... -/`) and exits with status `1` if any loophole is found:
+
+```bash
+# Strict CI check (exits with code 1 on sorry, custom axioms, or `: True` stubs)
+laud check src --entry Main
+
+# Generate AGENTS.md (and optional CLAUDE.md) rules enforcing this gate for AI agents
+laud init-agent --claude
+```
+
+---
+
 ### 1. Import DAG Deduplication & ASCII Tree (`laud graph`)
 
 Traverse the import graph starting from `Main.lean`, collapse structurally identical files via normalized AST-token hashing, flag `HEq` bridges and `maxHeartbeats` overrides, and render a deduplicated ASCII dependency tree:
@@ -73,6 +87,9 @@ Run parallel mutation testing (`VACUOUS_TRUTH`, `UNUSED_HYP`, `BOUNDARY_SHIFT`) 
 ```bash
 # Run inside a Lake/Mathlib project
 laud mutate src --lake --run
+
+# Fast CI check targeting vacuous truths only with a cap on mutants
+laud mutate src --lake --vacuous-only --limit 100 --run
 
 # Run standalone core-only checks without Mathlib
 laud mutate src --strip-imports --verify-orig --run
