@@ -5,7 +5,6 @@ edition = "2021"
 description = "Fast DAG deduplicator and proof mutation testing CLI for Lean 4"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com<your-username>/lean-audit"
 keywords = ["lean", "lean4", "formal-verification", "mutation-testing", "theorem-proving"]
 categories = ["command-line-utilities", "development-tools::testing"]
 
