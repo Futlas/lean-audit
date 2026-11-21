@@ -19,6 +19,37 @@ pub struct ModuleNode {
     pub trivial_true_count: usize,
 }
 
+pub fn strip_lean_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut i = 0;
+    let mut block_depth = 0usize;
+
+    while i < chars.len() {
+        if i + 1 < chars.len() && chars[i] == '/' && chars[i + 1] == '-' {
+            block_depth += 1;
+            i += 2;
+            continue;
+        }
+        if block_depth > 0 && i + 1 < chars.len() && chars[i] == '-' && chars[i + 1] == '/' {
+            block_depth -= 1;
+            i += 2;
+            continue;
+        }
+        if block_depth == 0 && i + 1 < chars.len() && chars[i] == '-' && chars[i + 1] == '-' {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if block_depth == 0 {
+            out.push(chars[i]);
+        }
+        i += 1;
+    }
+    out
+}
+
 pub fn normalize_and_hash(text: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     for line in text.lines() {
@@ -65,11 +96,7 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
                 .filter_map(|c| c.get(1).map(|m| m.as_str().replace(['«', '»'], "")))
                 .collect();
 
-            let code_only: String = content
-                .lines()
-                .map(|l| l.split("--").next().unwrap_or(""))
-                .collect::<Vec<_>>()
-                .join("\n");
+            let code_only = strip_lean_comments(&content);
 
             let content_hash = normalize_and_hash(&content);
             let has_heq = code_only.contains("HEq ");
