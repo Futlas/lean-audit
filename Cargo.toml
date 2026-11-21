@@ -1,6 +1,6 @@
 [package]
 name = "lean-audit"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Alexander Limanskii"]
 description = "Fast DAG deduplicator, arXiv-style LaTeX proof outline generator, and mutation testing CLI for Lean 4"
@@ -21,6 +21,7 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
+indicatif = "0.17"
 rayon = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }

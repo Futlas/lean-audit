@@ -103,12 +103,12 @@ pub fn run_graph(
     visited.insert(entry.to_string());
     queue.push_back((entry.to_string(), 0usize));
 
-    let mut depth_stats: HashMap<usize, (usize, usize, usize, usize)> = HashMap::new();
+    let mut depth_stats: HashMap<usize, (usize, usize, usize, usize, usize)> = HashMap::new();
     let mut first_anomaly: Option<(usize, String, &'static str)> = None;
 
     while let Some((curr, depth)) = queue.pop_front() {
         let Some(node) = nodes.get(&curr) else { continue };
-        let stat = depth_stats.entry(depth).or_insert((0, 0, 0, 0));
+        let stat = depth_stats.entry(depth).or_insert((0, 0, 0, 0, 0));
         stat.0 += 1;
 
         if seen_hashes.insert(node.content_hash) {
@@ -120,6 +120,7 @@ pub fn run_graph(
                     first_anomaly = Some((depth, node.name.clone(), "HEq (heterogeneous equality)"));
                 }
             }
+            stat.4 += node.axioms_count;
             if node.has_heartbeat_hack {
                 stat.3 += 1;
                 if first_anomaly.is_none() {
@@ -144,24 +145,27 @@ pub fn run_graph(
         "Unique (Deduplicated)",
         "HEq Bridges",
         "Heartbeat Overrides",
+        "Custom Axioms",
     ]);
 
     let mut depths: Vec<usize> = depth_stats.keys().copied().collect();
     depths.sort_unstable();
 
-    let (mut tot_m, mut tot_u, mut tot_h, mut tot_b) = (0, 0, 0, 0);
+    let (mut tot_m, mut tot_u, mut tot_h, mut tot_b, mut tot_a) = (0, 0, 0, 0, 0);
     for d in &depths {
-        let (m, u, h, b) = depth_stats[d];
+        let (m, u, h, b, a) = depth_stats[d];
         tot_m += m;
         tot_u += u;
         tot_h += h;
         tot_b += b;
+        tot_a += a;
         table.add_row(vec![
             Cell::new(format!("Level {d}")),
             Cell::new(m),
             Cell::new(u).fg(Color::Cyan),
             Cell::new(h).fg(if h > 0 { Color::Yellow } else { Color::Green }),
             Cell::new(b).fg(if b > 0 { Color::Red } else { Color::Green }),
+            Cell::new(a).fg(if a > 0 { Color::Red } else { Color::Green }),
         ]);
     }
 
@@ -171,6 +175,7 @@ pub fn run_graph(
         Cell::new(tot_u).fg(Color::Cyan),
         Cell::new(tot_h),
         Cell::new(tot_b),
+        Cell::new(tot_a),
     ]);
 
     println!("\n{table}");
@@ -194,4 +199,93 @@ pub fn run_graph(
     }
 
     ExitCode::SUCCESS
+}
+
+pub fn run_check(src_dir: &Path, entry: &str, allow_axioms: bool) -> ExitCode {
+    let (total_files, nodes) = build_dag(src_dir);
+
+    if !nodes.contains_key(entry) {
+        eprintln!("Error: entry module `{entry}` not found in {:?}", src_dir);
+        return ExitCode::from(2);
+    }
+
+    let mut visited = HashSet::new();
+    let mut seen_hashes = HashSet::new();
+    let mut queue = VecDeque::new();
+
+    visited.insert(entry.to_string());
+    queue.push_back(entry.to_string());
+
+    let mut tot_sorry = 0usize;
+    let mut tot_axioms = 0usize;
+    let mut tot_true_stubs = 0usize;
+    let mut tot_heartbeats = 0usize;
+    let mut tot_clones = 0usize;
+
+    let mut issues_table = Table::new();
+    issues_table.set_header(vec!["Module", "sorry/admit", "Axioms", ": True Stubs", "Heartbeat Hack"]);
+
+    while let Some(curr) = queue.pop_front() {
+        let Some(node) = nodes.get(&curr) else { continue };
+
+        if !seen_hashes.insert(node.content_hash) {
+            tot_clones += 1;
+            continue;
+        }
+
+        tot_sorry += node.sorry_count;
+        tot_axioms += node.axioms_count;
+        tot_true_stubs += node.trivial_true_count;
+        if node.has_heartbeat_hack {
+            tot_heartbeats += 1;
+        }
+
+        let has_issue = node.sorry_count > 0
+            || (!allow_axioms && node.axioms_count > 0)
+            || node.trivial_true_count > 0
+            || node.has_heartbeat_hack;
+
+        if has_issue {
+            issues_table.add_row(vec![
+                Cell::new(&node.name),
+                Cell::new(node.sorry_count).fg(if node.sorry_count > 0 { Color::Red } else { Color::Green }),
+                Cell::new(node.axioms_count).fg(if node.axioms_count > 0 { Color::Yellow } else { Color::Green }),
+                Cell::new(node.trivial_true_count).fg(if node.trivial_true_count > 0 { Color::Red } else { Color::Green }),
+                Cell::new(if node.has_heartbeat_hack { "YES" } else { "no" })
+                    .fg(if node.has_heartbeat_hack { Color::Red } else { Color::Green }),
+            ]);
+        }
+
+        for imp in &node.imports {
+            if nodes.contains_key(imp) && visited.insert(imp.clone()) {
+                queue.push_back(imp.clone());
+            }
+        }
+    }
+
+    println!("\n=== AI-Agent & Formal Proof Integrity Check (`{entry}`) ===");
+    println!(
+        "Files on disk: {} | Reachable: {} | Clones skipped: {}",
+        total_files,
+        visited.len(),
+        tot_clones
+    );
+    println!(
+        "Summary: sorry/admit = {} | custom axioms = {} | `: True` stubs = {} | heartbeat overrides = {}",
+        tot_sorry, tot_axioms, tot_true_stubs, tot_heartbeats
+    );
+
+    let failed = tot_sorry > 0
+        || (!allow_axioms && tot_axioms > 0)
+        || tot_true_stubs > 0
+        || tot_heartbeats > 0;
+
+    if failed {
+        println!("\nFlagged Modules:\n{issues_table}");
+        eprintln!("CHECK FAILED: Unproven gaps, custom axioms, or trivial `: True` stubs detected.");
+        ExitCode::from(1)
+    } else {
+        println!("CHECK PASSED: Proof DAG is clean and self-contained.");
+        ExitCode::SUCCESS
+    }
 }

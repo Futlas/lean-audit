@@ -6,6 +6,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use indicatif::{ProgressBar, ProgressStyle};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use walkdir::WalkDir;
 
@@ -157,6 +158,8 @@ pub fn run_mutate(
     strip_imports: bool,
     verify_orig: bool,
     use_lake: bool,
+    vacuous_only: bool,
+    limit: Option<usize>,
     lean_cmd: &str,
 ) -> ExitCode {
     let lake_root = if use_lake {
@@ -264,6 +267,7 @@ pub fn run_mutate(
                     });
                 }
 
+                if !vacuous_only {
                 for (h_idx, (st, en)) in split_top_level_parens(hyps).iter().enumerate() {
                     let removed = &hyps[*st..*en];
                     if !removed.contains(':') {
@@ -310,27 +314,46 @@ pub fn run_mutate(
                         }
                     }
                 }
+                }
             }
             local_mutants
         })
         .collect();
+
+    if let Some(max_m) = limit {
+        if mutants.len() > max_m {
+            mutants.truncate(max_m);
+        }
+    }
 
     let survived_count = AtomicUsize::new(0);
     let env_errors = AtomicUsize::new(0);
 
     if run {
         let label = if use_lake { "lake env lean" } else { lean_cmd };
-        println!("Running parallel verification via `{label}`...");
-        mutants.par_iter_mut().for_each(|m| match check_lean_file(&runner, &m.file_path) {
-            Ok(true) => {
-                m.survived = true;
-                survived_count.fetch_add(1, Ordering::Relaxed);
+        println!("Running parallel verification of {} mutants via `{label}`...", mutants.len());
+        let pb = ProgressBar::new(mutants.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) | {msg}")
+                .unwrap()
+                .progress_chars("█▓░"),
+        );
+        mutants.par_iter_mut().for_each(|m| {
+            match check_lean_file(&runner, &m.file_path) {
+                Ok(true) => {
+                    m.survived = true;
+                    let s = survived_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    pb.set_message(format!("survivors: {s}"));
+                }
+                Ok(false) => {}
+                Err(()) => {
+                    env_errors.fetch_add(1, Ordering::Relaxed);
+                }
             }
-            Ok(false) => {}
-            Err(()) => {
-                env_errors.fetch_add(1, Ordering::Relaxed);
-            }
+            pb.inc(1);
         });
+        pb.finish_with_message(format!("done (survivors: {})", survived_count.load(Ordering::Relaxed)));
     }
 
     let mut cnt_vac = (0usize, 0usize);

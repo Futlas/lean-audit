@@ -14,6 +14,9 @@ pub struct ModuleNode {
     pub content_hash: u64,
     pub has_heq: bool,
     pub has_heartbeat_hack: bool,
+    pub axioms_count: usize,
+    pub sorry_count: usize,
+    pub trivial_true_count: usize,
 }
 
 pub fn normalize_and_hash(text: &str) -> u64 {
@@ -37,7 +40,10 @@ pub fn normalize_and_hash(text: &str) -> u64 {
 }
 
 pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
-    let imp_re = Regex::new(r"(?m)^import\s+([A-Za-z0-9_.']+)").unwrap();
+    let imp_re = Regex::new(r"(?m)^import\s+([A-Za-z0-9_.'«»]+)").unwrap();
+    let axiom_re = Regex::new(r"(?m)^(?:private\s+|protected\s+)?axiom\s+").unwrap();
+    let sorry_re = Regex::new(r"\b(sorry|admit)\b").unwrap();
+    let true_stub_re = Regex::new(r"(?::\s*True\b|∧\s*True\b|/\\\s*True\b)").unwrap();
 
     let files: Vec<PathBuf> = WalkDir::new(src_dir)
         .into_iter()
@@ -56,13 +62,22 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
             let mod_name = rel.with_extension("").to_string_lossy().replace('/', ".");
             let imports = imp_re
                 .captures_iter(&content)
-                .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
+                .filter_map(|c| c.get(1).map(|m| m.as_str().replace(['«', '»'], "")))
                 .collect();
 
+            let code_only: String = content
+                .lines()
+                .map(|l| l.split("--").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n");
+
             let content_hash = normalize_and_hash(&content);
-            let has_heq = content.contains("HEq ");
+            let has_heq = code_only.contains("HEq ");
             let has_heartbeat_hack =
-                content.contains("maxHeartbeats 0") || content.contains("maxHeartbeats 4000000");
+                code_only.contains("maxHeartbeats 0") || code_only.contains("maxHeartbeats 4000000");
+            let axioms_count = axiom_re.find_iter(&code_only).count();
+            let sorry_count = sorry_re.find_iter(&code_only).count();
+            let trivial_true_count = true_stub_re.find_iter(&code_only).count();
 
             Some((
                 mod_name.clone(),
@@ -73,6 +88,9 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
                     content_hash,
                     has_heq,
                     has_heartbeat_hack,
+                    axioms_count,
+                    sorry_count,
+                    trivial_true_count,
                 },
             ))
         })

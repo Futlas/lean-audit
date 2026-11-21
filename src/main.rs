@@ -4,14 +4,15 @@ mod graph;
 mod mutate;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(
     name = "lean-audit",
     version,
-    about = "Fast DAG deduplicator, arXiv-style LaTeX proof outline generator, and mutation auditor for Lean 4"
+    about = "Fast DAG deduplicator, AI-agent proof verifier, LaTeX outline generator, and mutation auditor for Lean 4"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -22,119 +23,129 @@ struct Cli {
 enum Commands {
     /// Analyze import DAG, deduplicate cloned modules, and render ASCII dependency tree
     Graph {
-        /// Root source directory containing .lean files
         #[arg(default_value = "src")]
         src: PathBuf,
-        /// Entry module name (without .lean)
         #[arg(short, long, default_value = "Main")]
         entry: String,
-        /// Optional path to export unique reachable file paths
         #[arg(short, long)]
         export_unique: Option<PathBuf>,
-        /// Render deduplicated dependency tree in ASCII format
         #[arg(short, long)]
         tree: bool,
-        /// Maximum depth for ASCII tree rendering
         #[arg(long, default_value_t = 4)]
         max_depth: usize,
     },
+    /// Strict CI and AI-agent integrity check (exits with code 1 on sorry, custom axioms, or `: True` stubs)
+    Check {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        #[arg(long)]
+        allow_axioms: bool,
+    },
+    /// Generate AGENTS.md (and optional CLAUDE.md) guardrails for AI coding agents
+    InitAgent {
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        #[arg(long)]
+        claude: bool,
+    },
     /// Generate and run proof mutations (vacuous truth, unused hypotheses, boundary shifts)
     Mutate {
-        /// Target file or directory
         path: PathBuf,
-        /// Output directory for mutants and JSON report
         #[arg(short, long, default_value = "/tmp/lean_mutants")]
         out: PathBuf,
-        /// Case-insensitive theorem name filter
         #[arg(short, long)]
         filter: Option<String>,
-        /// Execute Lean compiler against generated mutants (exits with code 1 if survivors found)
         #[arg(short, long)]
         run: bool,
-        /// Strip `import` lines for standalone core-only execution without Mathlib
         #[arg(long)]
         strip_imports: bool,
-        /// Verify that the original file compiles before testing its mutants
         #[arg(long)]
         verify_orig: bool,
-        /// Auto-detect Lake workspace root and run via `lake env lean`
         #[arg(long)]
         lake: bool,
-        /// Lean compiler command (used when --lake is not set)
+        #[arg(long)]
+        vacuous_only: bool,
+        #[arg(long)]
+        limit: Option<usize>,
         #[arg(long, default_value = "lean")]
         lean_cmd: String,
     },
     /// Export an arXiv-style LaTeX (.tex) and optional Markdown proof outline
     Blueprint {
-        /// Root source directory containing .lean files
         #[arg(default_value = "src")]
         src: PathBuf,
-        /// Entry module name (without .lean)
         #[arg(short, long, default_value = "Main")]
         entry: String,
-        /// Maximum dependency depth to include
         #[arg(long, default_value_t = 4)]
         max_depth: usize,
-        /// Include only theorem and lemma declarations (skip def/structure)
         #[arg(long)]
         only_theorems: bool,
-        /// Include bare `def ... : Prop` declarations without docstrings
         #[arg(long)]
         include_props: bool,
-        /// Output path for LaTeX (.tex) document
         #[arg(short, long, default_value = "proof_outline.tex")]
         tex: PathBuf,
-        /// Optional output path for Markdown outline
         #[arg(long)]
         md: Option<PathBuf>,
     },
 }
 
+fn write_agent_instructions(dir: &Path, also_claude: bool) -> ExitCode {
+    let policy = r#"# Lean 4 Formalization Guardrails (`lean-audit`)
+
+Before marking any Lean 4 task or Pull Request as complete, you MUST follow these rules:
+
+1. **Zero Proof Placeholders:** Never leave `sorry` or `admit` in any reachable module.
+2. **No Invented Axioms:** Do not introduce custom `axiom` declarations to bypass hard lemmas. Rely strictly on standard Lean/Mathlib axioms (`propext`, `Classical.choice`, `Quot.sound`).
+3. **No Trivial Goal Stubs:** Never weaken theorem targets to `: True` or append `∧ True` placeholders.
+4. **No Solver Timeouts Bypass:** Do not set `set_option maxHeartbeats 0` or artificially inflate heartbeat limits.
+5. **Mandatory Verification Gate:** Run the following commands and ensure both exit with status `0`:
+   ```bash
+   lake build
+   laud check src --entry Main
+   laud mutate src --lake --vacuous-only --limit 100 --run
+   ```
+"#;
+
+    let agents_path = dir.join("AGENTS.md");
+    if let Err(e) = fs::write(&agents_path, policy) {
+        eprintln!("Failed to write {:?}: {e}", agents_path);
+        return ExitCode::from(2);
+    }
+    println!("Generated AI-agent guardrail file: {:?}", agents_path);
+
+    if also_claude {
+        let claude_path = dir.join("CLAUDE.md");
+        if let Err(e) = fs::write(&claude_path, policy) {
+            eprintln!("Failed to write {:?}: {e}", claude_path);
+            return ExitCode::from(2);
+        }
+        println!("Generated Claude Code guardrail file: {:?}", claude_path);
+    }
+
+    ExitCode::SUCCESS
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Commands::Graph {
-            src,
-            entry,
-            export_unique,
-            tree,
-            max_depth,
-        } => graph::run_graph(&src, &entry, export_unique, tree, max_depth),
+        Commands::Graph { src, entry, export_unique, tree, max_depth } => {
+            graph::run_graph(&src, &entry, export_unique, tree, max_depth)
+        }
+        Commands::Check { src, entry, allow_axioms } => {
+            graph::run_check(&src, &entry, allow_axioms)
+        }
+        Commands::InitAgent { dir, claude } => write_agent_instructions(&dir, claude),
         Commands::Mutate {
-            path,
-            out,
-            filter,
-            run,
-            strip_imports,
-            verify_orig,
-            lake,
-            lean_cmd,
+            path, out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, lean_cmd,
         } => mutate::run_mutate(
-            &path,
-            &out,
-            filter,
-            run,
-            strip_imports,
-            verify_orig,
-            lake,
-            &lean_cmd,
+            &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
         Commands::Blueprint {
-            src,
-            entry,
-            max_depth,
-            only_theorems,
-            include_props,
-            tex,
-            md,
+            src, entry, max_depth, only_theorems, include_props, tex, md,
         } => blueprint::run_blueprint(
-            &src,
-            &entry,
-            max_depth,
-            only_theorems,
-            include_props,
-            tex,
-            md,
+            &src, &entry, max_depth, only_theorems, include_props, tex, md,
         ),
     }
 }
