@@ -1,6 +1,8 @@
 [package]
 name = "lean-audit"
-version = "0.1.0"
+version = "0.1.1"
+authors = ["Alexander Limanskii"]
+repository = "https://github.com"
 edition = "2021"
 description = "Fast DAG deduplicator and proof mutation testing CLI for Lean 4"
 license = "MIT"
