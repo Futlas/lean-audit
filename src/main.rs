@@ -28,6 +28,12 @@ enum Commands {
         /// Optional path to export unique reachable file paths
         #[arg(short, long)]
         export_unique: Option<PathBuf>,
+        /// Render deduplicated dependency tree in ASCII format
+        #[arg(short, long)]
+        tree: bool,
+        /// Maximum depth for ASCII tree rendering
+        #[arg(long, default_value_t = 4)]
+        max_depth: usize,
     },
     /// Generate and optionally run proof mutations (vacuous truth, unused hypotheses, boundary shifts)
     Mutate {
@@ -61,7 +67,9 @@ fn main() {
             src,
             entry,
             export_unique,
-        } => graph::run_graph(&src, &entry, export_unique),
+            tree,
+            max_depth,
+        } => graph::run_graph(&src, &entry, export_unique, tree, max_depth),
         Commands::Mutate {
             path,
             out,

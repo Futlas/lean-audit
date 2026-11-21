@@ -1,27 +1,95 @@
-# lean-audit
+# lean-audit (`laud`)
 
-A high-speed DAG deduplicator and proof mutation testing CLI for **Lean 4**, written in Rust.
+A high-speed DAG deduplicator, ASCII dependency tree visualizer, and proof mutation testing CLI for **Lean 4**, written in Rust.
 
-Designed to audit massive formalization repositories (including AI-generated Lean codebases) by pruning dead modules, deduplicating cloned definitions, and stress-testing theorems against vacuous truths and unused hypotheses.
+Designed to audit large formalization repositories (including AI-generated Lean codebases) by pruning dead modules, deduplicating cloned definitions, and stress-testing theorems against vacuous truths, unused hypotheses, and boundary shifts.
 
-## Features
-- **`graph` subcommand**: Traverses the import DAG starting from an entry module (`Main`), deduplicates cloned files via structural content hashing, maps `HEq` bridges and `maxHeartbeats` overrides by depth, and exports the deduplicated module list.
-- **`mutate` subcommand**: Generates three classes of proof mutants in parallel using `rayon`:
-  - `VACUOUS_TRUTH`: Replaces the theorem target with `False` and runs core tactics (`omega`, `contradiction`, `decide`, `simp`) to detect contradictory hypotheses.
-  - `UNUSED_HYP`: Removes explicit hypotheses one by one while keeping the original proof intact.
-  - `BOUNDARY_SHIFT`: Weakens or inverts operators and constants (`<` -> `≤`, `=` -> `≠`, `1 / 2` -> `1 / 4`).
-- **`--verify-orig` & `--strip-imports`**: Filters out uncompilable files prior to mutation or strips `import` statements for standalone core-only auditing.
+## Installation
 
-## Build & Usage
+Install directly from [crates.io](https://crates.io) (provides both `laud` and `lean-audit` binaries):
+
 ```bash
-cargo build --release
-
-# 1. Deduplicate and analyze the import DAG
-./target/release/lean-audit graph ../src --entry Main --export-unique /tmp/unique_modules.txt
-
-# 2. Run proof mutation testing on a target directory
-./target/release/lean-audit mutate ./tests --run
-
-# 3. Audit core-only lemmas in offline mode without Mathlib
-./target/release/lean-audit mutate ../src --strip-imports --verify-orig --run
+cargo install lean-audit
 ```
+
+## Quick Start & Examples
+
+### 1. Deduplicate Import DAG & Render ASCII Tree (`laud graph`)
+
+Traverse the import graph starting from `Main.lean`, collapse structurally identical files via content hashing, and visualize the dependency tree:
+
+```bash
+laud graph src --entry Main --tree --max-depth 3
+```
+
+**Example Output:**
+```text
+Deduplicated ASCII Dependency Tree (max depth: 3):
+Main
+├── Statements
+│   └── Formalism.ZetaZeros
+└── Development.MainTheorem
+    ├── GroundTheory.BaseDefs
+    ├── GroundTheory.BaseDefsCopy [dedup]
+    └── Formalism.BridgeLemma [HEq, maxHeartbeats]
+```
+
+### 2. Mutation Testing on Lean 4 Theorems (`laud mutate`)
+
+Suppose you have a Lean file `Example.lean` with a vacuous hypothesis or an unused assumption:
+
+```lean
+-- Example.lean
+theorem vacuous_bound (x : Nat) (h1 : x < 5) (h2 : 10 < x) : x = 42 := by
+  omega
+
+theorem unused_assumption (n : Nat) (h_unused : 0 < n) : n + 0 = n := by
+  simp
+```
+
+Run `laud mutate` against the file:
+
+```bash
+laud mutate Example.lean --run
+```
+
+**Example Output:**
+```text
++------------------------------------+-----------+-----------------------+
+
+| Mutation Category                  | Generated | Survived (Suspicious) |
++========================================================================+
+
+| VACUOUS_TRUTH (Target -> False)    | 2         | 1                     |
+|------------------------------------+-----------+-----------------------+
+
+| UNUSED_HYP (Hypothesis Removal)    | 3         | 1                     |
+|------------------------------------+-----------+-----------------------+
+
+| BOUNDARY_SHIFT (Operator/Constant) | 1         | 0                     |
++------------------------------------+-----------+-----------------------+
+
+SURVIVING MUTANTS DETECTED:
++---------------+------------------------+---------------------------------+
+
+| Category      | Mutation               | Origin                          |
++==========================================================================+
+
+| VACUOUS_TRUTH | Target -> False        | Example.lean:vacuous_bound      |
+|---------------+------------------------+---------------------------------+
+
+| UNUSED_HYP    | Drop (h_unused : 0 < n)| Example.lean:unused_assumption  |
++---------------+------------------------+---------------------------------+
+```
+
+### 3. Standalone Core-Only Mode (`--strip-imports` & `--verify-orig`)
+
+Audit standalone lemmas without waiting for a full `Mathlib` build:
+
+```bash
+laud mutate src --strip-imports --verify-orig --run
+```
+
+## License
+
+MIT License — Copyright (c) 2026 Alexander Limanskii.
