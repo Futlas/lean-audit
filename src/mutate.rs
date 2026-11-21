@@ -1,10 +1,11 @@
+use crate::core::find_lake_root;
 use comfy_table::{Cell, Color, Table};
 use rayon::prelude::*;
 use regex::Regex;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, ExitCode};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use walkdir::WalkDir;
 
@@ -25,6 +26,11 @@ struct AuditReport {
     survived_mutants: usize,
     env_errors: usize,
     mutants: Vec<Mutant>,
+}
+
+enum Runner<'a> {
+    Lake(&'a Path),
+    Direct(&'a str, &'a [&'a str]),
 }
 
 fn split_top_level_parens(s: &str) -> Vec<(usize, usize)> {
@@ -57,7 +63,6 @@ fn split_top_level_parens(s: &str) -> Vec<(usize, usize)> {
     }
     blocks
 }
-
 
 fn parse_signature(rest: &str) -> Option<(&str, &str, usize)> {
     let (mut dp, mut db, mut dc) = (0usize, 0usize, 0usize);
@@ -117,8 +122,17 @@ fn is_likely_data_binder(block: &str, rest_of_sig: &str) -> bool {
     })
 }
 
-fn check_lean_file(bin: &str, args: &[&str], path: &Path) -> Result<bool, ()> {
-    match Command::new(bin).args(args).arg(path).output() {
+fn check_lean_file(runner: &Runner, path: &Path) -> Result<bool, ()> {
+    let output = match runner {
+        Runner::Lake(root) => Command::new("lake")
+            .args(["env", "lean"])
+            .arg(path)
+            .current_dir(root)
+            .output(),
+        Runner::Direct(bin, args) => Command::new(bin).args(*args).arg(path).output(),
+    };
+
+    match output {
         Ok(out) => {
             let stderr = String::from_utf8_lossy(&out.stderr);
             if stderr.contains("unknown module prefix")
@@ -142,8 +156,24 @@ pub fn run_mutate(
     run: bool,
     strip_imports: bool,
     verify_orig: bool,
+    use_lake: bool,
     lean_cmd: &str,
-) {
+) -> ExitCode {
+    let lake_root = if use_lake {
+        match find_lake_root(path) {
+            Some(r) => {
+                println!("Detected Lake workspace root: {:?}", r);
+                Some(r)
+            }
+            None => {
+                eprintln!("Error: --lake specified, but no lakefile.lean or lakefile.toml found above {:?}", path);
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        None
+    };
+
     let _ = fs::remove_dir_all(out_dir);
     fs::create_dir_all(out_dir).expect("Failed to create output directory");
 
@@ -154,6 +184,11 @@ pub fn run_mutate(
     let bin = cmd_parts.first().copied().unwrap_or("lean");
     let empty_args: Vec<&str> = Vec::new();
     let args = if cmd_parts.len() > 1 { &cmd_parts[1..] } else { &empty_args[..] };
+
+    let runner = match &lake_root {
+        Some(root) => Runner::Lake(root.as_path()),
+        None => Runner::Direct(bin, args),
+    };
 
     let files: Vec<PathBuf> = WalkDir::new(path)
         .into_iter()
@@ -185,7 +220,7 @@ pub fn run_mutate(
                     file.file_name().unwrap_or_default().to_string_lossy()
                 ));
                 if fs::write(&tmp_orig, &content).is_ok() {
-                    let ok = check_lean_file(bin, args, &tmp_orig).unwrap_or(false);
+                    let ok = check_lean_file(&runner, &tmp_orig).unwrap_or(false);
                     let _ = fs::remove_file(&tmp_orig);
                     if !ok {
                         skipped_orig.fetch_add(1, Ordering::Relaxed);
@@ -284,8 +319,9 @@ pub fn run_mutate(
     let env_errors = AtomicUsize::new(0);
 
     if run {
-        println!("Running parallel verification via `{lean_cmd}`...");
-        mutants.par_iter_mut().for_each(|m| match check_lean_file(bin, args, &m.file_path) {
+        let label = if use_lake { "lake env lean" } else { lean_cmd };
+        println!("Running parallel verification via `{label}`...");
+        mutants.par_iter_mut().for_each(|m| match check_lean_file(&runner, &m.file_path) {
             Ok(true) => {
                 m.survived = true;
                 survived_count.fetch_add(1, Ordering::Relaxed);
@@ -348,7 +384,8 @@ pub fn run_mutate(
         println!("Environment / missing dependency errors during mutant checks: {errs}");
     }
 
-    if run && survived_count.load(Ordering::Relaxed) > 0 {
+    let final_survived = survived_count.load(Ordering::Relaxed);
+    if run && final_survived > 0 {
         let mut surv_table = Table::new();
         surv_table.set_header(vec!["Category", "Mutation", "Origin"]);
         for m in mutants.iter().filter(|m| m.survived) {
@@ -364,7 +401,7 @@ pub fn run_mutate(
     let report = AuditReport {
         scanned_files: files.len(),
         total_mutants: mutants.len(),
-        survived_mutants: survived_count.load(Ordering::Relaxed),
+        survived_mutants: final_survived,
         env_errors: errs,
         mutants,
     };
@@ -374,4 +411,10 @@ pub fn run_mutate(
         let _ = fs::write(&report_path, json);
     }
     println!("JSON report saved to: {:?}\n", report_path);
+
+    if run && final_survived > 0 {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
 }

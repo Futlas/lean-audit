@@ -1,92 +1,45 @@
 # lean-audit (`laud`)
 
-A high-speed DAG deduplicator, ASCII dependency tree visualizer, and proof mutation testing CLI for **Lean 4**, written in Rust.
+A high-speed DAG deduplicator, ASCII dependency tree visualizer, arXiv-style LaTeX proof outline generator, and proof mutation testing CLI for **Lean 4**, written in Rust.
 
-Designed to audit large formalization repositories (including AI-generated Lean codebases) by pruning dead modules, deduplicating cloned definitions, and stress-testing theorems against vacuous truths, unused hypotheses, and boundary shifts.
+Designed to audit massive formalization repositories (including AI-generated Lean codebases) by pruning dead modules, deduplicating cloned definitions, extracting human-readable LaTeX proof outlines with tactic-based proof sketches, and stress-testing theorems against vacuous truths and unused hypotheses.
 
 ## Installation
 
-Install directly from [crates.io](https://crates.io) (provides both `laud` and `lean-audit` binaries):
+Install directly from [crates.io](https://crates.io) (provides both `laud` and `lean-audit` executables):
 
 ```bash
 cargo install lean-audit
 ```
 
-## Quick Start & Examples
+## Subcommands & Examples
 
 ### 1. Deduplicate Import DAG & Render ASCII Tree (`laud graph`)
 
-Traverse the import graph starting from `Main.lean`, collapse structurally identical files via content hashing, and visualize the dependency tree:
+Traverse the import graph starting from `Main.lean`, collapse structurally identical files via content hashing, flag `HEq` bridges and `maxHeartbeats` overrides, and render an ASCII dependency tree:
 
 ```bash
-laud graph src --entry Main --tree --max-depth 3
+laud graph src --entry Main --tree --max-depth 4
 ```
 
-**Example Output:**
-```text
-Deduplicated ASCII Dependency Tree (max depth: 3):
-Main
-├── Statements
-│   └── Formalism.ZetaZeros
-└── Development.MainTheorem
-    ├── GroundTheory.BaseDefs
-    ├── GroundTheory.BaseDefsCopy [dedup]
-    └── Formalism.BridgeLemma [HEq, maxHeartbeats]
-```
+### 2. Offline arXiv-Style LaTeX Proof Outline (`laud blueprint`)
 
-### 2. Mutation Testing on Lean 4 Theorems (`laud mutate`)
-
-Suppose you have a Lean file `Example.lean` with a vacuous hypothesis or an unused assumption:
-
-```lean
--- Example.lean
-theorem vacuous_bound (x : Nat) (h1 : x < 5) (h2 : 10 < x) : x = 42 := by
-  omega
-
-theorem unused_assumption (n : Nat) (h_unused : 0 < n) : n + 0 = n := by
-  simp
-```
-
-Run `laud mutate` against the file:
+Extract docstrings (`/-- ... -/`), clean up typeclass/namespace noise, summarize proof tactics and term reductions (`induction`, `by_contra`, `omega`, `linarith`, `simp`), and export a ready-to-compile LaTeX article (`.tex`) without relying on external LLMs:
 
 ```bash
-laud mutate Example.lean --run
+laud blueprint src --entry Main --max-depth 3 --tex proof_outline.tex
+pdflatex proof_outline.tex
 ```
 
-**Example Output:**
-```text
-+------------------------------------+-----------+-----------------------+
+### 3. Proof Mutation Testing & CI Integration (`laud mutate`)
 
-| Mutation Category                  | Generated | Survived (Suspicious) |
-+========================================================================+
-
-| VACUOUS_TRUTH (Target -> False)    | 2         | 1                     |
-|------------------------------------+-----------+-----------------------+
-
-| UNUSED_HYP (Hypothesis Removal)    | 3         | 1                     |
-|------------------------------------+-----------+-----------------------+
-
-| BOUNDARY_SHIFT (Operator/Constant) | 1         | 0                     |
-+------------------------------------+-----------+-----------------------+
-
-SURVIVING MUTANTS DETECTED:
-+---------------+------------------------+---------------------------------+
-
-| Category      | Mutation               | Origin                          |
-+==========================================================================+
-
-| VACUOUS_TRUTH | Target -> False        | Example.lean:vacuous_bound      |
-|---------------+------------------------+---------------------------------+
-
-| UNUSED_HYP    | Drop (h_unused : 0 < n)| Example.lean:unused_assumption  |
-+---------------+------------------------+---------------------------------+
-```
-
-### 3. Standalone Core-Only Mode (`--strip-imports` & `--verify-orig`)
-
-Audit standalone lemmas without waiting for a full `Mathlib` build:
+Run parallel mutation testing (`VACUOUS_TRUTH`, `UNUSED_HYP`, `BOUNDARY_SHIFT`) with automatic Lake workspace detection (`--lake`) and CI exit codes (`exit 1` if any mutant survives):
 
 ```bash
+# Run inside a Lake/Mathlib project
+laud mutate src --lake --run
+
+# Run standalone core-only checks without Mathlib
 laud mutate src --strip-imports --verify-orig --run
 ```
 
