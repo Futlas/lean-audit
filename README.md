@@ -57,7 +57,7 @@ pdflatex proof_outline.tex
 
 **Generated LaTeX Output Preview:**
 
-![Generated LaTeX Proof Outline Preview](docs/blueprint_preview.png)
+![Generated LaTeX Proof Outline Preview](docs/blueprint_preview.jpg)
 
 ---
 
