@@ -41,7 +41,7 @@ Traverse the import graph starting from `Main.lean`, collapse structurally ident
 laud graph src --entry Main --tree --max-depth 4
 ```
 
-**Example Output (tested on a 175k-file formalization archive in ~1s):**
+**Example Output (tested on a 175k-file formalization archive in ~1–15s):**
 ```text
 Deduplicated ASCII Dependency Tree (max depth: 4):
 Main
@@ -131,7 +131,7 @@ laud flatten src --entry Main --target riemannHypothesis --max-layers 9 --out /t
 laud blueprint /tmp/layers --entry Layer_00 --max-depth 5 --tex proof_outline.tex
 ```
 
-### 6. Full Audit Resume & Layered Proof Flattening (`laud resume` & `laud flatten`)
+### 7. Full Audit Resume & Layered Proof Flattening (`laud resume` & `laud flatten`)
 
 Run a complete one-command audit (DAG integrity check + GBDT node risk ranking + per-depth proof flattening `Layer_00.lean .. Layer_K.lean` + direct call-chain traces to `: True` stubs + clean LaTeX blueprint):
 
