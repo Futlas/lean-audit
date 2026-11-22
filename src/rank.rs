@@ -1,5 +1,5 @@
 use crate::core::{strip_lean_comments, ProofDag};
-use comfy_table::{presets::UTF8_FULL_CONDENSED, Cell, Color, ContentArrangement, Table};
+use comfy_table::{presets::UTF8_HORIZONTAL_ONLY, Cell, Color, ContentArrangement, Table};
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::HashMap;
@@ -159,7 +159,7 @@ pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usi
     }
 
     let mut table = Table::new();
-    table.load_preset(UTF8_FULL_CONDENSED);
+    table.load_preset(UTF8_HORIZONTAL_ONLY);
     table.set_content_arrangement(ContentArrangement::Dynamic);
     table.set_header(vec!["Risk", "Depth", "In-Deg", "Decls", ": True", "HEq", "HB", "Tactics", "Module"]);
     for f in features.iter().take(top_n) {
@@ -168,7 +168,7 @@ pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usi
             Cell::new(format!("{:.1}%", f.risk_score)).fg(c),
             Cell::new(f.depth), Cell::new(f.in_degree), Cell::new(f.decls),
             Cell::new(f.true_stubs), Cell::new(f.has_heq), Cell::new(f.has_heartbeat),
-            Cell::new(f.tactic_score), Cell::new(&f.module),
+            Cell::new(f.tactic_score), Cell::new(if f.module.len() > 62 { format!("…{}", &f.module[f.module.len()-61..]) } else { f.module.clone() }),
         ]);
     }
     println!("\n=== Decision-Tree Anomaly & Load-Bearing Node Ranking (Top {top_n}) ===");

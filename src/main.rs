@@ -4,7 +4,9 @@ mod flatten;
 mod core;
 mod graph;
 mod mutate;
+mod prelude;
 mod rank;
+mod resume;
 mod slice;
 
 use clap::{Parser, Subcommand};
@@ -82,6 +84,25 @@ enum Commands {
         #[arg(long, default_value = "lean")]
         lean_cmd: String,
     },
+    /// Run full end-to-end audit suite (DAG check + GBDT rank + layered flatten + clean LaTeX blueprint)
+    Resume {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        /// Optional root theorem name to trace
+        #[arg(short, long)]
+        target: Option<String>,
+        /// Maximum logical depth for flattening & call-chain trace
+        #[arg(long, default_value_t = 9)]
+        max_layers: usize,
+        /// Save complete Markdown audit summary report
+        #[arg(short, long, default_value = "/tmp/laud_resume.md")]
+        out: Option<PathBuf>,
+        /// Generate clean arXiv LaTeX blueprint directly from the flattened layers
+        #[arg(long, default_value = "/tmp/laud_resume.tex")]
+        tex: Option<PathBuf>,
+    },
     /// Flatten live proof declarations into clean per-level files (`Layer_00.lean` .. `Layer_K.lean`)
     Flatten {
         #[arg(default_value = "src")]
@@ -93,6 +114,9 @@ enum Commands {
         /// Maximum logical depth of layers to flatten
         #[arg(long)]
         max_layers: Option<usize>,
+        /// Export a ready-to-post GitHub Issue Markdown report with call-chain traces
+        #[arg(long)]
+        issue: Option<PathBuf>,
         #[arg(short, long, default_value = "/tmp/lean_layers")]
         out: PathBuf,
     },
@@ -146,6 +170,9 @@ enum Commands {
         /// Prune unused declarations inside modules via top-down symbol reachability
         #[arg(long)]
         tree_shake: bool,
+        /// Strip external Mathlib imports and inject a minimal kernel prelude for standalone `lean` verification
+        #[arg(long)]
+        standalone: bool,
         /// Immediately run `lake env lean` / `lean` on the generated slice
         #[arg(short, long)]
         run: bool,
@@ -223,15 +250,16 @@ fn main() -> ExitCode {
         } => mutate::run_mutate(
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
-        Commands::Flatten { src, entry, target, max_layers, out } => flatten::run_flatten(&src, &entry, target, max_layers, &out),
+        Commands::Resume { src, entry, target, max_layers, out, tex } => resume::run_resume(&src, &entry, target, max_layers, out, tex),
+        Commands::Flatten { src, entry, target, max_layers, issue, out } => flatten::run_flatten(&src, &entry, target, max_layers, issue, &out),
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)
         }
         Commands::Rank { src, entry, top, max_depth, min_risk, export, csv } => {
             rank::run_rank(&src, &entry, top, max_depth, min_risk, export, csv)
         }
-        Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, run } => {
-            slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, run)
+        Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, standalone, run } => {
+            slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, standalone, run)
         }
         Commands::Blueprint {
             src, entry, max_depth, only_theorems, include_props, tex, md, tree_shake,

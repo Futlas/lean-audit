@@ -1,8 +1,9 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use crate::core::{strip_lean_comments, ProofDag};
 use regex::Regex;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 
@@ -63,7 +64,7 @@ fn load_module_into(
     true
 }
 
-pub fn run_flatten(src_dir: &Path, entry: &str, targets: Vec<String>, max_layers: Option<usize>, out_dir: &Path) -> ExitCode {
+pub fn run_flatten(src_dir: &Path, entry: &str, targets: Vec<String>, max_layers: Option<usize>, issue_out: Option<PathBuf>, out_dir: &Path) -> ExitCode {
     let t0 = Instant::now();
     let dag = match ProofDag::build(src_dir, entry, None) {
         Ok(d) => d,
@@ -90,9 +91,16 @@ pub fn run_flatten(src_dir: &Path, entry: &str, targets: Vec<String>, max_layers
         if seed && visited.insert(id) { q.push_back((id, 0)); }
     }
 
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(ProgressStyle::with_template("  [{elapsed_precise}] {spinner:.green} {msg}").unwrap());
+
     while let Some((curr_id, depth)) = q.pop_front() {
         if let Some(lim) = max_layers {
             if depth > lim { continue; }
+        }
+        if live_decls.len() % 250 == 0 {
+            pb.set_message(format!("Tracing layer {} | live decls: {} | modules loaded: {}", depth, live_decls.len(), loaded_mods.len()));
+            pb.tick();
         }
         live_decls.push((curr_id, depth));
         let root_m = all_decls[curr_id].module.clone();
@@ -130,6 +138,7 @@ pub fn run_flatten(src_dir: &Path, entry: &str, targets: Vec<String>, max_layers
         }
     }
 
+    pb.finish_and_clear();
     let max_l = live_decls.iter().map(|&(_, l)| l).max().unwrap_or(0);
     let mut layers: Vec<Vec<usize>> = vec![Vec::new(); max_l + 1];
     for &(id, l) in &live_decls { layers[l].push(id); }
@@ -176,7 +185,29 @@ pub fn run_flatten(src_dir: &Path, entry: &str, targets: Vec<String>, max_layers
     println!("Disk files: {} -> Loaded modules: {} -> Flat layers: {} (`Layer_00.lean` .. `Layer_{:02}.lean`)", dag.total_files_on_disk, loaded_mods.len(), layers.len(), max_l);
     println!("Live declarations: {} | `: True` stubs in chain: {}", live_decls.len(), stubs);
     for (i, ids) in layers.iter().enumerate() { println!("  Layer_{:02}.lean : {} declarations", i, ids.len()); }
-    for (i, tr) in traces.iter().enumerate() { println!("  [Stub Trace #{}] {}", i + 1, tr.join(" -> ")); }
+    for (i, tr) in traces.iter().enumerate() {
+        println!("\n  ┌─ [Stub Trace #{}]", i + 1);
+        for (step_idx, step) in tr.iter().enumerate() {
+            let short_step = if step.len() > 88 { format!("…{}", &step[step.len()-87..]) } else { step.clone() };
+            if step_idx + 1 == tr.len() {
+                println!("  └──▶ [STUB] {short_step}");
+            } else {
+                println!("  ├─ {short_step}");
+            }
+        }
+    }
+    if let Some(ref issue_path) = issue_out {
+        let mut md = format!("# Formal Proof Audit Report: `{}`\n\n", entry);
+        md.push_str(&format!("- **Total files scanned:** {}\n", dag.total_files_on_disk));
+        md.push_str(&format!("- **Live declarations in dependency closure:** {}\n", live_decls.len()));
+        md.push_str(&format!("- **Trivial `: True` / `∧ True` / `→ True` stubs detected on critical path:** {}\n\n", stubs));
+        md.push_str("## Direct Dependency Chains to Trivial Stubs\n\n");
+        for (i, tr) in traces.iter().enumerate() {
+            md.push_str(&format!("### Stub Trace #{}\n```text\n{}\n```\n\n", i + 1, tr.join(" ->\n  ")));
+        }
+        let _ = fs::write(issue_path, md);
+        println!("GitHub Issue markdown report saved to: {:?}", issue_path);
+    }
     println!("Output saved to: {:?}", out_dir);
     ExitCode::SUCCESS
 }

@@ -131,6 +131,15 @@ laud flatten src --entry Main --target riemannHypothesis --max-layers 9 --out /t
 laud blueprint /tmp/layers --entry Layer_00 --max-depth 5 --tex proof_outline.tex
 ```
 
+### 6. Full Audit Resume & Layered Proof Flattening (`laud resume` & `laud flatten`)
+
+Run a complete one-command audit (DAG integrity check + GBDT node risk ranking + per-depth proof flattening `Layer_00.lean .. Layer_K.lean` + direct call-chain traces to `: True` stubs + clean LaTeX blueprint):
+
+```bash
+# Run full end-to-end audit and generate GitHub Issue report + LaTeX blueprint
+laud resume src --entry Main --target riemannHypothesis --max-layers 9 --out audit_report.md --tex outline.tex
+```
+
 ## License
 
 MIT License — Copyright (c) 2026 Alexander Limanskii.

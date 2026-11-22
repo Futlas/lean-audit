@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::hash_map::DefaultHasher;
@@ -84,10 +85,18 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
         .collect();
 
     let total_files = files.len();
+    let pb = ProgressBar::new(total_files as u64);
+    pb.set_style(
+        ProgressStyle::with_template("  [{elapsed_precise}] [{bar:36.cyan/blue}] {pos}/{len} ({eta}) {msg}")
+            .unwrap()
+            .progress_chars("█▓░"),
+    );
+    pb.set_message("Indexing Lean modules...");
 
     let nodes: HashMap<String, ModuleNode> = files
         .par_iter()
         .filter_map(|path| {
+            pb.inc(1);
             let content = fs::read_to_string(path).ok()?;
             let rel = path.strip_prefix(src_dir).ok()?;
             let mod_name = rel.with_extension("").to_string_lossy().replace('/', ".");
@@ -122,6 +131,7 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
             ))
         })
         .collect();
+    pb.finish_and_clear();
 
     (total_files, nodes)
 }
@@ -286,5 +296,32 @@ impl ProofDag {
         }
 
         used
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_true_stub_detection_and_match_exclusion() {
+        let re = Regex::new(
+            r"(?m)^[^|\n]*(?::\s*True\b|∧\s*True\b|/\\\s*True\b|\bTrue\s*(?:∧|/\\)|(?:→|->)\s*True\b)",
+        )
+        .unwrap();
+
+        assert!(re.is_match("theorem bad1 : True := trivial"));
+        assert!(re.is_match("def bad2 : Prop := A ∧ True ∧ B"));
+        assert!(re.is_match("def bad3 : Prop := True ∧ A"));
+        assert!(re.is_match("theorem bad4 : HardStmt → True := fun _ => trivial"));
+        assert!(!re.is_match("  | .false => True"));
+    }
+
+    #[test]
+    fn test_comment_stripping() {
+        let code = "theorem ok : 1 = 1 := by\n  -- sorry\n  /- axiom fake : False -/\n  rfl\n";
+        let clean = strip_lean_comments(code);
+        assert!(!clean.contains("sorry"));
+        assert!(!clean.contains("axiom"));
     }
 }
