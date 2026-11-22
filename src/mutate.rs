@@ -268,7 +268,7 @@ pub fn run_mutate(
                 let out_false = out_dir.join(format!("{safe_name}_{idx}_false.lean"));
                 if fs::write(&out_false, false_code).is_ok() {
         
-            let stub_re = Regex::new(r"(∧\s*True\b|/\\\s*True\b|:\s*True\b)").unwrap();
+            let stub_re = Regex::new(r"(?m)^[^|\n]*?(∧\s*True\b|/\\\s*True\b|\bTrue\s*(?:∧|/\\)|:\s*True\b|(?:→|->)\s*True\b)").unwrap();
             let file_stem = file.file_stem().unwrap_or_default().to_string_lossy().replace('.', "_");
             for (s_idx, m) in stub_re.find_iter(&content).enumerate() {
                 let mut mutated = content.clone();

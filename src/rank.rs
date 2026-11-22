@@ -74,7 +74,7 @@ fn gbdt_risk_score(
     (prob * 1000.0).round() / 10.0
 }
 
-pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, csv_out: Option<PathBuf>) -> ExitCode {
+pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usize>, min_risk: f64, export_paths: Option<PathBuf>, csv_out: Option<PathBuf>) -> ExitCode {
     let dag = match ProofDag::build(src_dir, entry, None) {
         Ok(d) => d,
         Err(e) => {
@@ -130,7 +130,19 @@ pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, csv_out: Option<PathB
         })
         .collect();
 
+    if let Some(md) = max_depth {
+        features.retain(|f| f.depth <= md);
+    }
+    features.retain(|f| f.risk_score >= min_risk);
     features.sort_by(|a, b| b.risk_score.total_cmp(&a.risk_score).then_with(|| b.in_degree.cmp(&a.in_degree)));
+
+    if let Some(ref exp_p) = export_paths {
+        let paths: Vec<String> = features.iter().take(top_n)
+            .filter_map(|f| dag.nodes.get(&f.module).map(|n| n.path.to_string_lossy().to_string()))
+            .collect();
+        let _ = fs::write(exp_p, paths.join("\n"));
+        println!("Exported {} targeted module paths (top {}, max_depth={:?}, min_risk={:.1}%) to: {:?}", paths.len(), top_n, max_depth, min_risk, exp_p);
+    }
 
     if let Some(ref csv_path) = csv_out {
         let mut csv = String::from("module,depth,in_degree,out_degree,lines,decls,true_stubs,sorry_count,axioms_count,has_heq,has_heartbeat,tactic_score,risk_score\n");

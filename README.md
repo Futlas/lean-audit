@@ -107,6 +107,18 @@ laud slice src --entry Main --max-depth 4 --tree-shake --axioms riemannHypothesi
 laud blueprint src --entry Main --max-depth 5 --tree-shake --tex proof_outline.tex
 ```
 
+### 5. Two-Pass Mark-and-Sweep Distillation & GBDT Risk Ranking (`laud distill` & `laud rank`)
+
+Prune dead files and unused declarations backward from target theorems, and rank surviving modules by anomaly risk & load-bearing centrality (with CSV export for ML/neuromorphic pipelines):
+
+```bash
+# Distill a 175k-file repository down to its live proof skeleton
+laud distill src --entry Main --target riemannHypothesis --out /tmp/distilled
+
+# Rank modules by GBDT anomaly risk and export node features to CSV
+laud rank src --entry Main --top 15 --csv features.csv
+```
+
 ## License
 
 MIT License — Copyright (c) 2026 Alexander Limanskii.

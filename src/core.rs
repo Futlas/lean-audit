@@ -74,7 +74,7 @@ pub fn build_dag(src_dir: &Path) -> (usize, HashMap<String, ModuleNode>) {
     let imp_re = Regex::new(r"(?m)^import\s+([A-Za-z0-9_.'«»]+)").unwrap();
     let axiom_re = Regex::new(r"(?m)^(?:private\s+|protected\s+)?axiom\s+").unwrap();
     let sorry_re = Regex::new(r"\b(sorry|admit)\b").unwrap();
-    let true_stub_re = Regex::new(r"(?::\s*True\b|∧\s*True\b|/\\\s*True\b)").unwrap();
+    let true_stub_re = Regex::new(r"(?m)^[^|\n]*(?::\s*True\b|∧\s*True\b|/\\\s*True\b|\bTrue\s*(?:∧|/\\)|(?:→|->)\s*True\b)").unwrap();
 
     let files: Vec<PathBuf> = WalkDir::new(src_dir)
         .into_iter()

@@ -103,6 +103,15 @@ enum Commands {
         entry: String,
         #[arg(long, default_value_t = 20)]
         top: usize,
+        /// Filter modules up to this depth level in the DAG
+        #[arg(long)]
+        max_depth: Option<usize>,
+        /// Minimum risk score threshold (0.0 .. 100.0)
+        #[arg(long, default_value_t = 0.0)]
+        min_risk: f64,
+        /// Export selected top-N file paths to a text file for `laud mutate`
+        #[arg(short, long)]
+        export: Option<PathBuf>,
         #[arg(long)]
         csv: Option<PathBuf>,
     },
@@ -202,8 +211,8 @@ fn main() -> ExitCode {
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)
         }
-        Commands::Rank { src, entry, top, csv } => {
-            rank::run_rank(&src, &entry, top, csv)
+        Commands::Rank { src, entry, top, max_depth, min_risk, export, csv } => {
+            rank::run_rank(&src, &entry, top, max_depth, min_risk, export, csv)
         }
         Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, run } => {
             slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, run)
