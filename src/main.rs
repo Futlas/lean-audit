@@ -1,7 +1,9 @@
 mod blueprint;
+mod distill;
 mod core;
 mod graph;
 mod mutate;
+mod rank;
 mod slice;
 
 use clap::{Parser, Subcommand};
@@ -78,6 +80,31 @@ enum Commands {
         limit: Option<usize>,
         #[arg(long, default_value = "lean")]
         lean_cmd: String,
+    },
+    /// Two-pass Mark-and-Sweep distillation: prune dead files & unused declarations from target theorems
+    Distill {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        /// Target theorem(s) to preserve (defaults to all declarations in entry module)
+        #[arg(short, long)]
+        target: Vec<String>,
+        #[arg(short, long, default_value = "/tmp/lean_distilled")]
+        out: PathBuf,
+        #[arg(long)]
+        export_stubs: Option<PathBuf>,
+    },
+    /// Rank modules by anomaly risk (Decision Tree) and export ML feature CSV
+    Rank {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        #[arg(long, default_value_t = 20)]
+        top: usize,
+        #[arg(long)]
+        csv: Option<PathBuf>,
     },
     /// Slice top N levels of the proof pyramid for fast partial compilation & `#print axioms`
     Slice {
@@ -172,6 +199,12 @@ fn main() -> ExitCode {
         } => mutate::run_mutate(
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
+        Commands::Distill { src, entry, target, out, export_stubs } => {
+            distill::run_distill(&src, &entry, target, &out, export_stubs)
+        }
+        Commands::Rank { src, entry, top, csv } => {
+            rank::run_rank(&src, &entry, top, csv)
+        }
         Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, run } => {
             slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, run)
         }
