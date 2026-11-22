@@ -240,6 +240,7 @@ fn to_latex_math(s: &str) -> String {
         .to_string();
     out = out.replace('%', r"\%").replace('#', r"\#").replace('&', r"\&");
     let out = out.split("--").next().unwrap_or(&out).to_string();
+    let out = out.split("--").next().unwrap_or(&out).to_string();
     let ascii_only: String = out.chars().map(|c| if c.is_ascii() { c } else { '?' }).collect();
     ascii_only.split_whitespace().collect::<Vec<_>>().join(" ")
 }

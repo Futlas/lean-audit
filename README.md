@@ -119,6 +119,18 @@ laud distill src --entry Main --target riemannHypothesis --out /tmp/distilled
 laud rank src --entry Main --top 15 --csv features.csv
 ```
 
+### 6. Layered Proof Flattening & Direct Stub Traces (`laud flatten`)
+
+Extract only the live declarations required by a target theorem, flatten them into clean per-depth files (`Layer_00.lean` .. `Layer_K.lean`), and print exact dependency traces from the root theorem down to every `: True` stub:
+
+```bash
+# Flatten top 10 logical layers and trace call chains to `: True` stubs
+laud flatten src --entry Main --target riemannHypothesis --max-layers 9 --out /tmp/layers
+
+# Generate a clean arXiv-style LaTeX outline directly from the flattened layers
+laud blueprint /tmp/layers --entry Layer_00 --max-depth 5 --tex proof_outline.tex
+```
+
 ## License
 
 MIT License — Copyright (c) 2026 Alexander Limanskii.
