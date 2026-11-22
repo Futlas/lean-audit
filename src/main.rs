@@ -1,5 +1,6 @@
 mod blueprint;
 mod distill;
+mod flatten;
 mod core;
 mod graph;
 mod mutate;
@@ -80,6 +81,20 @@ enum Commands {
         limit: Option<usize>,
         #[arg(long, default_value = "lean")]
         lean_cmd: String,
+    },
+    /// Flatten live proof declarations into clean per-level files (`Layer_00.lean` .. `Layer_K.lean`)
+    Flatten {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        #[arg(short, long)]
+        target: Vec<String>,
+        /// Maximum logical depth of layers to flatten
+        #[arg(long)]
+        max_layers: Option<usize>,
+        #[arg(short, long, default_value = "/tmp/lean_layers")]
+        out: PathBuf,
     },
     /// Two-pass Mark-and-Sweep distillation: prune dead files & unused declarations from target theorems
     Distill {
@@ -208,6 +223,7 @@ fn main() -> ExitCode {
         } => mutate::run_mutate(
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
+        Commands::Flatten { src, entry, target, max_layers, out } => flatten::run_flatten(&src, &entry, target, max_layers, &out),
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)
         }
