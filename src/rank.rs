@@ -74,7 +74,7 @@ fn gbdt_risk_score(
     (prob * 1000.0).round() / 10.0
 }
 
-pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usize>, min_risk: f64, export_paths: Option<PathBuf>, csv_out: Option<PathBuf>) -> ExitCode {
+pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usize>, min_risk: f64, inspect_n: usize, ctx_lines: usize, export_paths: Option<PathBuf>, csv_out: Option<PathBuf>) -> ExitCode {
     let dag = match ProofDag::build(src_dir, entry, None) {
         Ok(d) => d,
         Err(e) => {
@@ -173,5 +173,36 @@ pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usi
     }
     println!("\n=== Decision-Tree Anomaly & Load-Bearing Node Ranking (Top {top_n}) ===");
     println!("{table}");
+
+    if inspect_n > 0 {
+        let stub_re = Regex::new(r"(?m)^[^|\n]*(?::\s*True\b|∧\s*True\b|/\\\s*True\b|\bTrue\s*(?:∧|/\\)|(?:→|->)\s*True\b)").unwrap();
+        println!("\n=== Code Context Inspection (Top {inspect_n} Suspects, ±{ctx_lines} lines) ===");
+        for (idx, f) in features.iter().take(inspect_n).enumerate() {
+            let Some(node) = dag.nodes.get(&f.module) else { continue };
+            let Ok(raw) = fs::read_to_string(&node.path) else { continue };
+            let lines: Vec<&str> = raw.lines().collect();
+            println!("\n--- [#{}] {} (Risk: {:.1}%, Depth: {}, In-Deg: {}) ---", idx + 1, f.module, f.risk_score, f.depth, f.in_degree);
+            println!("File: {}", node.path.display());
+            let mut shown = 0usize;
+            for (l_idx, line) in lines.iter().enumerate() {
+                if !line.trim_start().starts_with("--") && stub_re.is_match(line) {
+                    let start = l_idx.saturating_sub(ctx_lines);
+                    let end = (l_idx + ctx_lines + 1).min(lines.len());
+                    for j in start..end {
+                        let mark = if j == l_idx { ">>>" } else { "   " };
+                        println!("  {mark} {:4} | {}", j + 1, lines[j]);
+                    }
+                    shown += 1;
+                    if shown >= 2 { break; }
+                }
+            }
+            if shown == 0 {
+                for j in 0..lines.len().min(ctx_lines * 2 + 1) {
+                    println!("       {:4} | {}", j + 1, lines[j]);
+                }
+            }
+        }
+    }
+
     ExitCode::SUCCESS
 }

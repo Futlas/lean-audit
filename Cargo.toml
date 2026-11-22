@@ -1,6 +1,6 @@
 [package]
 name = "lean-audit"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2021"
 authors = ["Alexander Limanskii"]
 description = "Fast DAG deduplicator, arXiv-style LaTeX proof outline generator, and mutation testing CLI for Lean 4"

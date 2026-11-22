@@ -148,6 +148,12 @@ enum Commands {
         /// Minimum risk score threshold (0.0 .. 100.0)
         #[arg(long, default_value_t = 0.0)]
         min_risk: f64,
+        /// Print code snippets (±context lines) for the top-N suspicious modules
+        #[arg(long, default_value_t = 0)]
+        inspect: usize,
+        /// Number of context lines above and below each flagged line
+        #[arg(long, default_value_t = 3)]
+        context: usize,
         /// Export selected top-N file paths to a text file for `laud mutate`
         #[arg(short, long)]
         export: Option<PathBuf>,
@@ -255,8 +261,8 @@ fn main() -> ExitCode {
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)
         }
-        Commands::Rank { src, entry, top, max_depth, min_risk, export, csv } => {
-            rank::run_rank(&src, &entry, top, max_depth, min_risk, export, csv)
+        Commands::Rank { src, entry, top, max_depth, min_risk, inspect, context, export, csv } => {
+            rank::run_rank(&src, &entry, top, max_depth, min_risk, inspect, context, export, csv)
         }
         Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, standalone, run } => {
             slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, standalone, run)
