@@ -303,14 +303,16 @@ pub fn run_fix(
     table.load_preset(UTF8_HORIZONTAL_ONLY);
     table.set_header(vec!["Status", "Line", "Module", "Resolution / Rejection Reason"]);
     for r in &summary_rows {
-        let short_mod = if r.module.len() > 52 { format!("…{}", &r.module[r.module.len() - 51..]) } else { r.module.clone() };
+        let short_mod = if r.module.len() > 42 { format!("…{}", &r.module[r.module.len() - 41..]) } else { r.module.clone() };
+        let clean_res = r.resolution.replace("_root_.GlobalTheory.T.", "").replace("GlobalTheory.", "");
+        let short_res = if clean_res.len() > 46 { format!("{}…", &clean_res[..45]) } else { clean_res };
         let status_cell = match r.status {
             "PATCHED" => Cell::new("PATCHED").fg(Color::Green),
             "CHAINED" => Cell::new("CHAINED").fg(Color::Cyan),
             "BRIDGED" => Cell::new("BRIDGED").fg(Color::Yellow),
             _ => Cell::new("MANUAL").fg(Color::Red),
         };
-        table.add_row(vec![status_cell, Cell::new(r.line_num), Cell::new(short_mod), Cell::new(&r.resolution)]);
+        table.add_row(vec![status_cell, Cell::new(r.line_num), Cell::new(short_mod), Cell::new(short_res)]);
     }
 
     println!("\n{CYAN}=== Synthesis Summary ({auto_cnt} synthesized, {manual_cnt} manual subgoals required) ==={RESET}");
