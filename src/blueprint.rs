@@ -134,7 +134,7 @@ fn extract_theorem_calls(text: &str) -> Vec<String> {
         if short.len() <= 3 || skip.contains(&short) || local_hyp_re.is_match(short) {
             continue;
         }
-        let readable = short.replace('_', " ");
+        let readable = crate::lexicon::humanize_title(short);
         if !refs.contains(&readable) { refs.push(readable); }
         if refs.len() >= 4 { break; }
     }
@@ -152,14 +152,14 @@ fn summarize_proof(body: &str) -> Option<String> {
         return if refs.is_empty() {
             Some("Direct consequence of the preceding definitions.".to_string())
         } else {
-            Some(format!("Follows directly from \\texttt{{{}}}.", tex_escape(&refs.join(", "))))
+            Some(format!("Follows directly from {}.", refs.join(", ")))
         };
     }
 
     if !trimmed.starts_with("by") {
         let mut msg = String::from("Constructed by combining intermediate reductions");
         if !refs.is_empty() {
-            msg.push_str(&format!(", specifically \\texttt{{{}}}", tex_escape(&refs.join(", "))));
+            msg.push_str(&format!(", specifically {}", refs.join(", ")));
         }
         msg.push('.');
         return Some(msg);
@@ -326,7 +326,7 @@ fn parse_file(content: &str, only_theorems: bool, include_props: bool, used_symb
             else if !include_props && doc.is_none() { continue; }
         }
         let proof_sketch = if kind == "theorem" || kind == "lemma" { summarize_proof(&body) } else { None };
-        out.push(DeclItem { kind, title: humanize(name), doc, hyps, goal, proof_sketch });
+        out.push(DeclItem { kind, title: name.to_string(), doc, hyps, goal, proof_sketch });
     }
     out
 }
@@ -409,18 +409,19 @@ pub fn run_blueprint(
             tex.push_str(&format!("\\subsection{{{}}}\n", tex_escape(&ch.name)));
             for it in &ch.items {
                 let env = match it.kind.as_str() { "theorem" => "theorem", "lemma" => "lemma", _ => "definition" };
-                tex.push_str(&format!("\\begin{{{env}}}[{}]\n", tex_escape(&it.title)));
+                let pretty_title = crate::lexicon::humanize_title(&it.title);
+                tex.push_str(&format!("\\begin{{{env}}}[{pretty_title}]\n"));
                 if let Some(ref d) = it.doc { tex.push_str(&format!("{}\n\n", tex_escape(d))); }
-                if !it.hyps.is_empty() {
-                    let hs = it.hyps.iter().map(|h| format!("${}$", to_latex_math(h))).collect::<Vec<_>>().join(", ");
-                    tex.push_str(&format!("Suppose that {hs}. "));
-                }
-                if !it.goal.is_empty() {
-                    if it.goal.len() > 260 {
-                        tex.push_str("Then the compound structural condition holds (see formal source).\n");
-                    } else {
-                        tex.push_str(&format!("Then ${}$.\n", to_latex_math(&it.goal)));
-                    }
+                let math_hyps: Vec<String> = it.hyps.iter().map(|h| to_latex_math(h)).collect();
+                let math_goal = if it.goal.len() > 260 {
+                    "\text{compound structural condition}".to_string()
+                } else {
+                    to_latex_math(&it.goal)
+                };
+                if !math_goal.is_empty() {
+                    let prose = crate::lexicon::compose_math_prose(&math_hyps, &math_goal, env == "definition");
+                    let clean_prose = prose.replace("$$", "").replace("$ $", " ");
+                    tex.push_str(&format!("{clean_prose}\n"));
                 }
                 tex.push_str(&format!("\\end{{{env}}}\n"));
                 if let Some(ref sketch) = it.proof_sketch {

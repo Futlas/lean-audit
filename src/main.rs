@@ -1,6 +1,8 @@
 mod blueprint;
 mod distill;
+mod fix;
 mod flatten;
+mod lexicon;
 mod core;
 mod graph;
 mod mutate;
@@ -102,6 +104,22 @@ enum Commands {
         /// Generate clean arXiv LaTeX blueprint directly from the flattened layers
         #[arg(long, default_value = "/tmp/laud_resume.tex")]
         tex: Option<PathBuf>,
+    },
+    /// Bounded type-directed synthesizer that traces replacement candidates for `True` stubs
+    Fix {
+        #[arg(default_value = "src")]
+        src: PathBuf,
+        #[arg(short, long, default_value = "Main")]
+        entry: String,
+        /// Optional substring filter for target module name
+        #[arg(short, long)]
+        module: Option<String>,
+        /// Maximum number of flagged modules to inspect and synthesize fixes for
+        #[arg(short, long, default_value_t = 5)]
+        limit: usize,
+        /// Export suggested fixes as a unified `.patch` file
+        #[arg(short, long)]
+        patch: Option<PathBuf>,
     },
     /// Flatten live proof declarations into clean per-level files (`Layer_00.lean` .. `Layer_K.lean`)
     Flatten {
@@ -257,6 +275,7 @@ fn main() -> ExitCode {
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
         Commands::Resume { src, entry, target, max_layers, out, tex } => resume::run_resume(&src, &entry, target, max_layers, out, tex),
+        Commands::Fix { src, entry, module, limit, patch } => fix::run_fix(&src, &entry, module, limit, patch),
         Commands::Flatten { src, entry, target, max_layers, issue, out } => flatten::run_flatten(&src, &entry, target, max_layers, issue, &out),
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)

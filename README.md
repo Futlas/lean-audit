@@ -140,6 +140,15 @@ Run a complete one-command audit (DAG integrity check + GBDT node risk ranking +
 laud resume src --entry Main --target riemannHypothesis --max-layers 9 --out audit_report.md --tex outline.tex
 ```
 
+### 8. Bounded Type-Directed Proof Synthesizer (`laud fix`)
+
+Automatically scan closed-world imports for `: True` / `∧ True` / `→ True` specification holes, trace type/arity unification attempts in real time, and export unified `.patch` diffs:
+
+```bash
+# Synthesize replacement candidates for `True` stubs and export a patch file
+laud fix src --entry Main --limit 5 --patch suggested_fixes.patch
+```
+
 ## License
 
 MIT License — Copyright (c) 2026 Alexander Limanskii.
