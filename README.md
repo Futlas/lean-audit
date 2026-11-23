@@ -146,8 +146,14 @@ Automatically scan closed-world imports for `: True` / `∧ True` / `→ True` s
 
 ```bash
 # Synthesize replacement candidates for `True` stubs and export a patch file
-laud fix src --entry Main --limit 5 --patch suggested_fixes.patch
+laud fix src --entry Main --limit 15 --patch suggested_fixes.patch
 ```
+
+**Color-Coded Synthesis Statuses:**
+- **Green (`PATCHED`)**: Direct `Prop` match or valid curried application `(lemma ...)` found within local binder context.
+- **Cyan (`CHAINED`)**: 2-step transitive lemma composition `L₂ ∘ L₁` synthesized from local imports.
+- **Yellow (`BRIDGED`)**: Adapter bridge lemma `bridge_<target>` generated from the closest related local theorem.
+- **Red (`MANUAL`)**: Bounded search halted cleanly with zero matching predicates (requires human mathematical formulation).
 
 ## License
 
