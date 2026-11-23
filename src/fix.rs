@@ -67,16 +67,21 @@ pub fn run_fix(
     src_dir: &Path,
     entry: &str,
     target_mod: Option<String>,
+    min_depth: usize,
+    max_depth: Option<usize>,
     max_candidates: usize,
     patch_out: Option<PathBuf>,
 ) -> ExitCode {
     let t0 = Instant::now();
-    let dag = match ProofDag::build(src_dir, entry, None) {
+    let dag = match ProofDag::build(src_dir, entry, max_depth) {
         Ok(d) => d,
         Err(e) => { eprintln!("Error: {e}"); return ExitCode::from(2); }
     };
 
+    let mut depth_map: HashMap<String, usize> = HashMap::new();
+    for (d, layer) in dag.layers.iter().enumerate() { for m in layer { depth_map.insert(m.clone(), d); } }
     let mut targets: Vec<String> = dag.nodes.values()
+        .filter(|n| { let d = *depth_map.get(&n.name).unwrap_or(&0); d >= min_depth && max_depth.map(|mx| d <= mx).unwrap_or(true) })
         .filter(|n| n.trivial_true_count > 0)
         .filter(|n| target_mod.as_ref().map(|f| n.name.contains(f)).unwrap_or(true))
         .map(|n| n.name.clone())

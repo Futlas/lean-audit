@@ -65,7 +65,7 @@ pub fn run_resume(
 
     // 2. GBDT-скоринг топ-10 модулей
     println!("\n[2/4] GBDT Anomaly & Load-Bearing Node Ranking (Top 10):");
-    let _ = crate::rank::run_rank(src_dir, entry, 10, None, 0.0, 5, 3, None, None);
+    let _ = crate::rank::run_rank(src_dir, entry, 10, 0, Some(max_layers), 0.0, 5, 3, None, None);
 
     // 3. Послойное распрямление + прямые трассы до заглушек
     println!("\n[3/4] Layered Proof Flattening & Stub Call-Chain Trace (0..={max_layers}):");

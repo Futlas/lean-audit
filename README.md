@@ -146,7 +146,7 @@ Automatically scan closed-world imports for `: True` / `∧ True` / `→ True` s
 
 ```bash
 # Synthesize replacement candidates for `True` stubs and export a patch file
-laud fix src --entry Main --limit 15 --patch suggested_fixes.patch
+laud fix src --entry Main --min-depth 10 --max-depth 18 --limit 15 --patch suggested_fixes.patch
 ```
 
 **Color-Coded Synthesis Statuses:**

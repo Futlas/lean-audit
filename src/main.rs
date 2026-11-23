@@ -114,6 +114,12 @@ enum Commands {
         /// Optional substring filter for target module name
         #[arg(short, long)]
         module: Option<String>,
+        /// Minimum DAG depth (layer N) to scan
+        #[arg(long, default_value_t = 0)]
+        min_depth: usize,
+        /// Maximum DAG depth (layer G) to scan
+        #[arg(short = 'd', long)]
+        max_depth: Option<usize>,
         /// Maximum number of flagged modules to inspect and synthesize fixes for
         #[arg(short, long, default_value_t = 5)]
         limit: usize,
@@ -160,7 +166,10 @@ enum Commands {
         entry: String,
         #[arg(long, default_value_t = 20)]
         top: usize,
-        /// Filter modules up to this depth level in the DAG
+        /// Minimum depth level (layer N) in the DAG
+        #[arg(long, default_value_t = 0)]
+        min_depth: usize,
+        /// Filter modules up to this depth level (layer G) in the DAG
         #[arg(long)]
         max_depth: Option<usize>,
         /// Minimum risk score threshold (0.0 .. 100.0)
@@ -275,13 +284,13 @@ fn main() -> ExitCode {
             &path, &out, filter, run, strip_imports, verify_orig, lake, vacuous_only, limit, &lean_cmd,
         ),
         Commands::Resume { src, entry, target, max_layers, out, tex } => resume::run_resume(&src, &entry, target, max_layers, out, tex),
-        Commands::Fix { src, entry, module, limit, patch } => fix::run_fix(&src, &entry, module, limit, patch),
+        Commands::Fix { src, entry, module, min_depth, max_depth, limit, patch } => fix::run_fix(&src, &entry, module, min_depth, max_depth, limit, patch),
         Commands::Flatten { src, entry, target, max_layers, issue, out } => flatten::run_flatten(&src, &entry, target, max_layers, issue, &out),
         Commands::Distill { src, entry, target, out, export_stubs } => {
             distill::run_distill(&src, &entry, target, &out, export_stubs)
         }
-        Commands::Rank { src, entry, top, max_depth, min_risk, inspect, context, export, csv } => {
-            rank::run_rank(&src, &entry, top, max_depth, min_risk, inspect, context, export, csv)
+        Commands::Rank { src, entry, top, min_depth, max_depth, min_risk, inspect, context, export, csv } => {
+            rank::run_rank(&src, &entry, top, min_depth, max_depth, min_risk, inspect, context, export, csv)
         }
         Commands::Slice { src, entry, max_depth, out, axioms, tree_shake, standalone, run } => {
             slice::run_slice(&src, &entry, max_depth, &out, axioms, tree_shake, standalone, run)

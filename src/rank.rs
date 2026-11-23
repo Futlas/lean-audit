@@ -74,8 +74,8 @@ fn gbdt_risk_score(
     (prob * 1000.0).round() / 10.0
 }
 
-pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usize>, min_risk: f64, inspect_n: usize, ctx_lines: usize, export_paths: Option<PathBuf>, csv_out: Option<PathBuf>) -> ExitCode {
-    let dag = match ProofDag::build(src_dir, entry, None) {
+pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, min_depth: usize, max_depth: Option<usize>, min_risk: f64, inspect_n: usize, ctx_lines: usize, export_paths: Option<PathBuf>, csv_out: Option<PathBuf>) -> ExitCode {
+    let dag = match ProofDag::build(src_dir, entry, max_depth) {
         Ok(d) => d,
         Err(e) => {
             eprintln!("Error: {e}");
@@ -90,7 +90,7 @@ pub fn run_rank(src_dir: &Path, entry: &str, top_n: usize, max_depth: Option<usi
     for (d, layer) in dag.layers.iter().enumerate() {
         for mod_name in layer {
             depth_map.insert(mod_name.clone(), d);
-            reachable_list.push(mod_name.clone());
+            if d >= min_depth && max_depth.map(|mx| d <= mx).unwrap_or(true) { reachable_list.push(mod_name.clone()); }
             if let Some(node) = dag.nodes.get(mod_name) {
                 for imp in &node.imports {
                     if dag.nodes.contains_key(imp) {
